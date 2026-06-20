@@ -20,7 +20,8 @@ fn main() {
             std::process::exit(1);
         }
         let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        println!("{}", home);
+        let home = PathBuf::from(home);
+        cd(home);
         return;
     }
 
@@ -29,9 +30,10 @@ fn main() {
     // Scenario 2: Got an actual path that exists in the system
     let potential_path = PathBuf::from(input);
 
+    // ignore if the list mode is on
     if potential_path.exists() && !list_mode {
         let absolute_path = potential_path.canonicalize().unwrap_or(potential_path);
-        println!("{}", absolute_path.display());
+        cd(absolute_path);
         return;
     }
 
@@ -47,7 +49,7 @@ fn main() {
     if list_mode {
         print_results(results);
     } else {
-        println!("{}", results[0].0.path().display())
+        cd(results[0].0.path());
     }
 }
 
@@ -73,4 +75,10 @@ fn perform_search(path: &PathBuf, query: &str) -> Vec<(DirEntry, i64)> {
 
     results.sort_by_key(|a| std::cmp::Reverse(a.1));
     results
+}
+
+fn cd(path: PathBuf) {
+    // Prints the directory path to go to for ~/.zshrc to pick up
+    // Added only for code readability
+    println!("{}", path.display());
 }
