@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fuzzy-matcher = "*"
+fuzzy-matcher = "0.3.7"
+walkdir = "2.5.0"

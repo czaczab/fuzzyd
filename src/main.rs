@@ -1,10 +1,11 @@
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use std::env;
-use std::fs::{DirEntry, read_dir};
 use std::path::PathBuf;
+use walkdir::{DirEntry, WalkDir};
 
 fn main() {
+    println!("dupa2");
     let args: Vec<String> = env::args().collect();
 
     // Check for list mode
@@ -29,7 +30,6 @@ fn main() {
 
     // Scenario 2: Got an actual path that exists in the system
     let potential_path = PathBuf::from(input);
-
     // ignore if the list mode is on
     if potential_path.exists() && !list_mode {
         let absolute_path = potential_path.canonicalize().unwrap_or(potential_path);
@@ -38,31 +38,39 @@ fn main() {
     }
 
     // Scenario 3: Got a search query (not a path)
-    let current_dir = env::current_dir().expect("Failed to get current directory");
-    let results = perform_search(&current_dir, input);
-
-    if results.is_empty() {
-        eprintln!("No match found for: {}", input);
-        std::process::exit(1);
-    }
+    let results = perform_search(input);
 
     if list_mode {
         print_results(results);
     } else {
-        cd(results[0].0.path());
+        cd(PathBuf::from(results[0].0.path()));
     }
 }
 
-fn print_results(results: Vec<(std::fs::DirEntry, i64)>) {
+fn print_results(results: Vec<(walkdir::DirEntry, i64)>) {
     for (entry, score) in results {
         println!("{} ({})", entry.path().display(), score);
     }
 }
 
-fn perform_search(path: &PathBuf, query: &str) -> Vec<(DirEntry, i64)> {
+fn perform_search(query: &str) -> Vec<(DirEntry, i64)> {
     let matcher = SkimMatcherV2::default();
-    let mut results: Vec<(DirEntry, i64)> = read_dir(path)
-        .unwrap()
+    let current_dir = env::current_dir().expect("Failed to get current directory");
+
+    let mut results: Vec<(DirEntry, i64)> = WalkDir::new(current_dir)
+        .max_depth(2)
+        .into_iter()
+        .filter_entry(|entry| {
+            // Only look inside direcories
+            if !entry.file_type().is_dir() {
+                return false;
+            }
+            // Ignore current and parent directories
+            if entry.file_name() == "." || entry.file_name() == ".." {
+                return false;
+            }
+            true
+        })
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let name = entry.file_name();
@@ -74,6 +82,11 @@ fn perform_search(path: &PathBuf, query: &str) -> Vec<(DirEntry, i64)> {
         .collect();
 
     results.sort_by_key(|a| std::cmp::Reverse(a.1));
+
+    if results.is_empty() {
+        eprintln!("No match found for: {}", query);
+        std::process::exit(1);
+    }
     results
 }
 
