@@ -1,35 +1,33 @@
+use clap::Parser;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use std::env;
 use std::path::PathBuf;
 use walkdir::{DirEntry, WalkDir};
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = "I am better than cd and zoxide")]
+struct CLI {
+    #[arg(short = 'l', long = "list", action = clap::ArgAction::SetTrue)]
+    list: bool,
+
+    input: Option<String>,
+}
+
 fn main() {
-    println!("dupa2");
-    let args: Vec<String> = env::args().collect();
+    let cli = CLI::parse();
+    let list_mode = cli.list;
 
-    // Check for list mode
-    let list_mode = args.iter().any(|arg| arg == "-l");
-
-    // Remove flags from args iterator
-    let clean_args: Vec<&String> = args.iter().skip(1).filter(|arg| *arg != "-l").collect();
-
-    // Scenario 1: If no args left, go to home directory
-    if clean_args.is_empty() {
+    let input = cli.input.unwrap_or_else(|| {
         if list_mode {
             eprintln!("No query povided to list.");
             std::process::exit(1);
         }
-        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let home = PathBuf::from(home);
-        cd(home);
-        return;
-    }
+        env::var("HOME").unwrap_or_else(|_| ".".to_string())
+    });
 
-    let input = clean_args[0];
-
-    // Scenario 2: Got an actual path that exists in the system
-    let potential_path = PathBuf::from(input);
+    // Scenario 1: Got an actual path that exists in the system
+    let potential_path = PathBuf::from(&input);
     // ignore if the list mode is on
     if potential_path.exists() && !list_mode {
         let absolute_path = potential_path.canonicalize().unwrap_or(potential_path);
@@ -37,8 +35,8 @@ fn main() {
         return;
     }
 
-    // Scenario 3: Got a search query (not a path)
-    let results = perform_search(input);
+    // Scenario 2: Got a search query (not a path)
+    let results = perform_search(&input);
 
     if list_mode {
         print_results(results);
@@ -53,7 +51,7 @@ fn print_results(results: Vec<(walkdir::DirEntry, i64)>) {
     }
 }
 
-fn perform_search(query: &str) -> Vec<(DirEntry, i64)> {
+fn perform_search(query: &String) -> Vec<(DirEntry, i64)> {
     let matcher = SkimMatcherV2::default();
     let current_dir = env::current_dir().expect("Failed to get current directory");
 
@@ -76,7 +74,7 @@ fn perform_search(query: &str) -> Vec<(DirEntry, i64)> {
             let name = entry.file_name();
             let name = name.to_string_lossy();
             matcher
-                .fuzzy_match(&name, query)
+                .fuzzy_match(&name, query.as_str())
                 .map(|score| (entry, score))
         })
         .collect();
