@@ -11,38 +11,49 @@ struct CLI {
     #[arg(short = 'l', long = "list", action = clap::ArgAction::SetTrue)]
     list: bool,
 
-    input: Option<String>,
+    #[arg(num_args = 0..)]
+    input: Vec<String>,
 }
 
 fn main() {
     let cli = CLI::parse();
     let list_mode = cli.list;
 
-    let input = cli.input.unwrap_or_else(|| {
-        if list_mode {
-            eprintln!("No query povided to list.");
-            std::process::exit(1);
+    match cli.input.len() {
+        0 => handle_path(PathBuf::from(
+            env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+        )),
+        1 => {
+            let potential_path = PathBuf::from(&cli.input[0]);
+            if potential_path.exists() {
+                handle_path(potential_path);
+            } else {
+                handle_singe_query(cli.input[0].clone(), list_mode);
+            }
         }
-        env::var("HOME").unwrap_or_else(|_| ".".to_string())
-    });
+        _ => handle_multiple_querys(cli.input),
+    };
+}
 
-    // Scenario 1: Got an actual path that exists in the system
-    let potential_path = PathBuf::from(&input);
-    // ignore if the list mode is on
-    if potential_path.exists() && !list_mode {
-        let absolute_path = potential_path.canonicalize().unwrap_or(potential_path);
-        cd(absolute_path);
-        return;
-    }
+fn handle_path(path: PathBuf) {
+    let absolute_path = path.canonicalize().unwrap_or(path);
+    cd(absolute_path);
+}
 
-    // Scenario 2: Got a search query (not a path)
-    let results = perform_search(&input);
+fn handle_singe_query(query: String, list_mode: bool) {
+    let results = perform_search(&query);
 
     if list_mode {
         print_results(results);
     } else {
         cd(PathBuf::from(results[0].0.path()));
     }
+}
+
+fn handle_multiple_querys(_querys: Vec<String>) {
+    // In the future there will be code handling multiple querys
+    eprintln!("Multiple querys are unsupported in this version");
+    std::process::exit(1);
 }
 
 fn print_results(results: Vec<(walkdir::DirEntry, i64)>) {
@@ -92,4 +103,5 @@ fn cd(path: PathBuf) {
     // Prints the directory path to go to for ~/.zshrc to pick up
     // Added only for code readability
     println!("{}", path.display());
+    std::process::exit(0);
 }
