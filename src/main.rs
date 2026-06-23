@@ -31,7 +31,7 @@ fn main() {
                 handle_singe_query(cli.input[0].clone(), list_mode);
             }
         }
-        _ => handle_multiple_querys(cli.input),
+        _ => handle_multiple_querys(cli.input, list_mode),
     };
 }
 
@@ -41,7 +41,12 @@ fn handle_path(path: PathBuf) {
 }
 
 fn handle_singe_query(query: String, list_mode: bool) {
-    let results = perform_search(&query);
+    let results = perform_search(&query, None);
+
+    if results.is_empty() {
+        eprintln!("No results found for query: {}", query);
+        std::process::exit(0);
+    }
 
     if list_mode {
         print_results(results);
@@ -50,10 +55,35 @@ fn handle_singe_query(query: String, list_mode: bool) {
     }
 }
 
-fn handle_multiple_querys(_querys: Vec<String>) {
-    // In the future there will be code handling multiple querys
-    eprintln!("Multiple querys are unsupported in this version");
-    std::process::exit(1);
+fn handle_multiple_querys(mut querys: Vec<String>, list_mode: bool) {
+    search_layer(&mut querys, None, list_mode);
+
+    fn search_layer(query_vec: &mut Vec<String>, path: Option<PathBuf>, list_mode: bool) {
+        let results = perform_search(&query_vec[0], path);
+
+        if results.is_empty() {
+            eprintln!("No results found for query: {}", query_vec[0]);
+            std::process::exit(0);
+        }
+
+        query_vec.remove(0);
+
+        if query_vec.is_empty() {
+            if list_mode {
+                print_results(results);
+            } else {
+                cd(PathBuf::from(results[0].0.path()));
+            }
+        } else {
+            for result in results {
+                search_layer(
+                    &mut query_vec.clone(),
+                    Some(PathBuf::from(result.0.path())),
+                    list_mode,
+                );
+            }
+        }
+    }
 }
 
 fn print_results(results: Vec<(walkdir::DirEntry, i64)>) {
@@ -62,9 +92,10 @@ fn print_results(results: Vec<(walkdir::DirEntry, i64)>) {
     }
 }
 
-fn perform_search(query: &String) -> Vec<(DirEntry, i64)> {
+fn perform_search(query: &str, path: Option<PathBuf>) -> Vec<(DirEntry, i64)> {
     let matcher = SkimMatcherV2::default();
-    let current_dir = env::current_dir().expect("Failed to get current directory");
+    let current_dir =
+        path.unwrap_or_else(|| env::current_dir().expect("Failed to get current directory"));
 
     let mut results: Vec<(DirEntry, i64)> = WalkDir::new(current_dir)
         .max_depth(2)
@@ -83,19 +114,15 @@ fn perform_search(query: &String) -> Vec<(DirEntry, i64)> {
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let name = entry.file_name();
-            let name = name.to_string_lossy();
+            let name = name.to_string_lossy().to_lowercase();
             matcher
-                .fuzzy_match(&name, query.as_str())
-                .map(|score| (entry, score))
+                .fuzzy_match(&name, query)
+                // Subtracts the depth to prioritize shallower directories
+                .map(|score| (entry.clone(), score - entry.depth() as i64))
         })
         .collect();
 
     results.sort_by_key(|a| std::cmp::Reverse(a.1));
-
-    if results.is_empty() {
-        eprintln!("No match found for: {}", query);
-        std::process::exit(1);
-    }
     results
 }
 
